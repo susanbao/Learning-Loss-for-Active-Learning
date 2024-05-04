@@ -9,20 +9,23 @@ import torch.nn.functional as F
 
 
 class LossNet(nn.Module):
-    def __init__(self, feature_sizes=[32, 16, 8, 4], num_channels=[64, 128, 256, 512], interm_dim=128):
+    def __init__(self, feature_sizes=[19, 19, 5, 2, 3], num_channels=[2048, 1024, 2048, 1024, 256, 256], interm_dim=128):
         super(LossNet, self).__init__()
         
         self.GAP1 = nn.AvgPool2d(feature_sizes[0])
         self.GAP2 = nn.AvgPool2d(feature_sizes[1])
         self.GAP3 = nn.AvgPool2d(feature_sizes[2])
         self.GAP4 = nn.AvgPool2d(feature_sizes[3])
+        self.GAP5 = nn.AvgPool2d(feature_sizes[4])
 
         self.FC1 = nn.Linear(num_channels[0], interm_dim)
         self.FC2 = nn.Linear(num_channels[1], interm_dim)
         self.FC3 = nn.Linear(num_channels[2], interm_dim)
         self.FC4 = nn.Linear(num_channels[3], interm_dim)
+        self.FC5 = nn.Linear(num_channels[4], interm_dim)
+        self.FC6 = nn.Linear(num_channels[5], interm_dim)
 
-        self.linear = nn.Linear(4 * interm_dim, 1)
+        self.linear = nn.Linear(6 * interm_dim, 1)
     
     def forward(self, features):
         out1 = self.GAP1(features[0])
@@ -41,5 +44,12 @@ class LossNet(nn.Module):
         out4 = out4.view(out4.size(0), -1)
         out4 = F.relu(self.FC4(out4))
 
-        out = self.linear(torch.cat((out1, out2, out3, out4), 1))
+        out5 = self.GAP5(features[4])
+        out5 = out5.view(out5.size(0), -1)
+        out5 = F.relu(self.FC5(out5))
+
+        out6 = features[5].view(features[5].size(0), -1)
+        out6 = F.relu(self.FC6(out6))
+
+        out = self.linear(torch.cat((out1, out2, out3, out4, out5, out6), 1))
         return out

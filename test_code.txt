@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=0 python3 train_at.py --name LLAL_SSD_COCO_image --data_dir ../mmdetection_at/pro_data/SSD_COCO_LLAL/ --train_batch_size 16 --eval_batch_size 16 --num_epochs 10 --enable_wandb  >logs/LLAL_SSD_COCO_image.logs 2>logs/LLAL_SSD_COCO_image.err&

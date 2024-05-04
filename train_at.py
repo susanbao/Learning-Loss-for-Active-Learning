@@ -18,6 +18,23 @@ from data.data_utils_feature import get_loader_feature
 import models.lossnet as lossnet
 from config import *
 
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
 # Loss Prediction Loss
 def LossPredLoss(input, target, margin=1.0, reduction='mean'):
     assert len(input) % 2 == 0, 'the batch size is not even.'
@@ -51,15 +68,24 @@ def write_one_results(path, json_data):
         json.dump(json_data, outfile)   
 
 def test(models, dataloaders, args):
-     result = []
-     with torch.no_grad():
-        epoch_iterator = tqdm(dataloaders)
-        for step, batch in enumerate(epoch_iterator):
-            batch = tuple(t.to(args.device) for t in batch)
-            features, target_loss = batch
+    result = []
+    eval_losses = AverageMeter()
+    total_step = dataloaders.dataset.lens // args.eval_batch_size
+    eval_step = 0
+    with torch.no_grad():
+        for features, target_loss in dataloaders:
+            for i in range(len(features)):
+                features[i] = features[i].to(args.device)
+            target_loss = target_loss.to(args.device)
             pred_loss = models(features)
+            pred_loss = pred_loss.view(pred_loss.size(0))
             result.extend(pred_loss.cpu().tolist())
-     return result
+            loss   = LossPredLoss(pred_loss, target_loss, margin=MARGIN)
+            eval_losses.update(loss.item())
+            if (eval_step+1) % 10 == 0:
+                print("Test (%d / %d Steps) (loss=%2.5f), (Mean loss=%2.5f)" % (eval_step, total_step, loss.item(), eval_losses.avg))
+            eval_step += 1
+    return result, eval_losses.avg
 
 def save_model(args, model, epoch):
     model_to_save = model.module if hasattr(model, 'module') else model
@@ -67,7 +93,7 @@ def save_model(args, model, epoch):
     torch.save(model_to_save.state_dict(), model_checkpoint)
 
 def train(args):
-    ipdb.set_trace()
+    # ipdb.set_trace()
     train_loader, test_loader, train_datasets, test_datasets = get_loader_feature(args)
 
     loss_module = lossnet.LossNet().to(args.device)
@@ -76,22 +102,34 @@ def train(args):
                                     momentum=MOMENTUM, weight_decay=WDECAY)
     sched_module   = lr_scheduler.MultiStepLR(optim_module, milestones=MILESTONES)
 
+    global_step = 0
+    test_losses = 0
     for epoch in range(num_epochs):
         sched_module.step()
-
-        for epoch in range(num_epochs):
-            loss_module.train()
-            for data in tqdm(train_loader, leave=False, total=len(train_loader)):
-                features = data[0]
-                target_loss = data[1]
-                pred_loss = loss_module(features)
-                pred_loss = pred_loss.view(pred_loss.size(0))
-                loss   = LossPredLoss(pred_loss, target_loss, margin=MARGIN)
-                loss.backward()
-                optim_module.step()
+        loss_module.train()
+        epoch_step = 0
+        total_step = train_loader.dataset.lens // args.train_batch_size
+        for features, target_loss in train_loader:
+            optim_module.zero_grad()
+            for i in range(len(features)):
+                features[i] = features[i].to(args.device)
+            target_loss = target_loss.to(args.device)
+            pred_loss = loss_module(features)
+            pred_loss = pred_loss.view(pred_loss.size(0))
+            loss   = LossPredLoss(pred_loss, target_loss, margin=MARGIN)
+            loss.backward()
+            optim_module.step()
+            if args.enable_wandb:
+                wandb.log({"loss":loss, "val_loss": test_losses, "lr": optim_module.param_groups[0]['lr']}, step=global_step)
+                wandb.log(loss_module.state_dict())
+            global_step += 1
+            epoch_step += 1
+            if (epoch_step+1) % 50 == 0:
+                print("Training Epoch %d, (%d / %d Steps)(loss=%2.5f)" % (epoch, epoch_step, total_step, loss.item()))
 
         if True:
-            result = test(loss_module, test_loader, args)
+            result, test_loss = test(loss_module, test_loader, args)
+            test_losses = test_loss
             save_model(args, loss_module, epoch)
             path = os.path.join(args.output_dir, f"{args.name}_image_losses_{epoch}.json")
             json_objects = {"losses": result}

@@ -23,7 +23,7 @@ class FeatureDataset(Dataset):
         self.lens = self.annotations.shape[0] if length == 0 else length
         self.shift = shift
         self.annotation_dir = input_dir + "/annotation/"
-        self.feature_dir = input_dir + "/LLALFeature"
+        self.feature_dir = input_dir + "/LLALFeature/"
 
     def __getitem__(self, index):
         index = index + self.shift
@@ -41,8 +41,6 @@ class FeatureDataset(Dataset):
         return self.lens
 
 def get_loader_feature(args):
-    if args.local_rank not in [-1, 0]:
-        torch.distributed.barrier()
         
     model_data_path = args.data_dir
 
@@ -56,8 +54,6 @@ def get_loader_feature(args):
     store_preprocess_annotations_path = model_data_path + split + "/image_true_losses.npy"
     test_datasets = FeatureDataset(inputs_path, store_preprocess_annotations_path, args)
 
-    if args.local_rank == 0:
-        torch.distributed.barrier()
 
     train_sampler = RandomSampler(train_datasets)
     test_sampler = SequentialSampler(test_datasets)
@@ -70,6 +66,6 @@ def get_loader_feature(args):
                              sampler=test_sampler,
                              batch_size=args.eval_batch_size,
                              num_workers=4,
-                             pin_memory=True) if test_datasets is not None else None
+                             pin_memory=True)
 
     return train_loader, test_loader, train_datasets, test_datasets
