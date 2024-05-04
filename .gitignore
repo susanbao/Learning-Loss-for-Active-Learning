@@ -2,3 +2,12 @@
 .pyc
 .vscode/settings.json
 *.pth
+wandb/
+logs/
+output/
+models/.ipynb_checkpoints/
+models/__pycache__/lossnet.cpython-38.pyc
+data/__pycache__/data_utils_feature.cpython-38.pyc
+.ipynb_checkpoints/
+__pycache__/config.cpython-38.pyc
+data/.ipynb_checkpoints/
